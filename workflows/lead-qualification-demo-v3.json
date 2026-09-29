@@ -1,0 +1,351 @@
+{
+  "name": "Обработка лидов с AI-квалификацией (демо v3)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Обработка лидов (демо v3)\n\nВход — **Webhook** (POST /webhook/lead), нужен заголовок **x-webhook-secret**.\n\nДобавлено: проверка секрета, **дедуп** по e-mail, локальное хранилище лидов, **ответ клиенту**.\n\nLLM/CRM/Telegram — заглушки (без ключей).",
+        "height": 340,
+        "width": 380,
+        "color": 4
+      },
+      "id": "b0000000-0000-0000-0000-000000000000",
+      "name": "Пояснение",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        150,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000001",
+      "name": "Приём заявки (webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        440
+      ],
+      "webhookId": "60bd94eb-173b-413c-b2a0-5164e0c6655a"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const sd = $getWorkflowStaticData('global');\nsd.seen = sd.seen || [];\nconst it = items[0].json;\nconst h = it.headers || {};\nconst b = (it.body && typeof it.body === 'object') ? it.body : it;\nconst SECRET = 'demo-secret-123';\nconst authorized = h['x-webhook-secret'] === SECRET;\nconst name = String(b.name || '').trim();\nconst email = String(b.email || '').trim().toLowerCase();\nconst service = String(b.service || '').trim();\nconst budget = Number(b.budget || 0);\nconst message = String(b.message || '').trim();\nconst valid = name.length > 1 && /.+@.+\\..+/.test(email);\nlet lead = 'new';\nif (!valid) lead = 'invalid';\nelse if (sd.seen.includes(email)) lead = 'dup';\nreturn [{ json: { name, email, service, budget, message, authorized, lead } }];"
+      },
+      "id": "b0000000-0000-0000-0000-000000000002",
+      "name": "Секрет, нормализация, дедуп",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c-auth",
+              "leftValue": "={{ $json.authorized ? \"ok\" : \"no\" }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000003",
+      "name": "Секрет верный?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c-new",
+              "leftValue": "={{ $json.lead }}",
+              "rightValue": "new",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000004",
+      "name": "Новый лид?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        940,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return items.map((item) => {\n  const l = item.json;\n  const text = (l.service + ' ' + l.message).toLowerCase();\n  let score = 40;\n  if (l.budget >= 300000) score += 35; else if (l.budget >= 100000) score += 20; else score += 5;\n  if (/реклам|заявк|лид|конверс/.test(text)) score += 15;\n  if (/ai|ии|автоматизац|интеграц/.test(text)) score += 10;\n  score = Math.min(score, 99);\n  const category = score >= 70 ? 'горячий' : score >= 50 ? 'тёплый' : 'холодный';\n  const priority = score >= 70 ? 'высокий' : score >= 50 ? 'средний' : 'низкий';\n  const nextStep = score >= 70 ? 'звонок в течение 15 минут' : score >= 50 ? 'письмо с коммерческим предложением' : 'прогревающая рассылка';\n  return { json: { ...l, score, category, priority, nextStep } };\n});"
+      },
+      "id": "b0000000-0000-0000-0000-000000000005",
+      "name": "AI-квалификация лида (LLM-заглушка)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const sd = $getWorkflowStaticData('global');\nsd.seen = sd.seen || [];\nsd.leads = sd.leads || [];\nreturn items.map((it) => {\n  const l = it.json;\n  if (!sd.seen.includes(l.email)) sd.seen.push(l.email);\n  const rec = { crm_id: 'CRM-' + l.email.split('@')[1], name: l.name, email: l.email, score: l.score, category: l.category, stage: l.category, created_at: new Date().toISOString() };\n  sd.leads.push(rec);\n  return { json: { ...l, crm_id: rec.crm_id, stage: rec.stage, created_at: rec.created_at, stored_total: sd.leads.length } };\n});"
+      },
+      "id": "b0000000-0000-0000-0000-000000000006",
+      "name": "CRM: сохранить лид",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1420,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'accepted', email: $json.email, category: $json.category, score: $json.score, nextStep: $json.nextStep, stored_total: $json.stored_total } }}",
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000007",
+      "name": "Ответ клиенту (принят)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1660,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c-hot",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 70,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000008",
+      "name": "Лид горячий?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1900,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "ЗАМЕНИТЕ_НА_CHAT_ID",
+        "text": "=🔥 Горячий лид: {{ $json.name }} ({{ $json.service }}), бюджет {{ $json.budget }} ₽. Следующий шаг: {{ $json.nextStep }}",
+        "additionalFields": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000009",
+      "name": "Уведомление менеджеру (Telegram)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2140,
+        280
+      ],
+      "disabled": true,
+      "webhookId": "8e6cd6b1-99e9-4162-8a44-3eec9b2d5119"
+    },
+    {
+      "parameters": {},
+      "id": "b0000000-0000-0000-0000-000000000010",
+      "name": "Не горячий — отложить",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2140,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'rejected', reason: ($json.authorized ? $json.lead : 'unauthorized') } }}",
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000011",
+      "name": "Ответ клиенту (отклонён)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        940,
+        680
+      ]
+    }
+  ],
+  "connections": {
+    "Приём заявки (webhook)": {
+      "main": [
+        [
+          {
+            "node": "Секрет, нормализация, дедуп",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Секрет, нормализация, дедуп": {
+      "main": [
+        [
+          {
+            "node": "Секрет верный?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Секрет верный?": {
+      "main": [
+        [
+          {
+            "node": "Новый лид?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ клиенту (отклонён)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Новый лид?": {
+      "main": [
+        [
+          {
+            "node": "AI-квалификация лида (LLM-заглушка)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ клиенту (отклонён)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI-квалификация лида (LLM-заглушка)": {
+      "main": [
+        [
+          {
+            "node": "CRM: сохранить лид",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM: сохранить лид": {
+      "main": [
+        [
+          {
+            "node": "Ответ клиенту (принят)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ответ клиенту (принят)": {
+      "main": [
+        [
+          {
+            "node": "Лид горячий?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Лид горячий?": {
+      "main": [
+        [
+          {
+            "node": "Уведомление менеджеру (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Не горячий — отложить",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

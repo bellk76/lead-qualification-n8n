@@ -1,0 +1,13 @@
+# n8n
+.n8n/
+node_modules/
+
+# сборка/временные артефакты видео
+vframes/
+vframes2/
+slides/
+*.log
+
+# ОС
+.DS_Store
+Thumbs.db

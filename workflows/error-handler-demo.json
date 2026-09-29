@@ -1,0 +1,68 @@
+{
+  "name": "Обработка ошибок лид-сценария",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: {\n  alert: 'Ошибка сценария обработки лидов',\n  workflow: $json.workflow && $json.workflow.name,\n  error: ($json.execution && $json.execution.error && $json.execution.error.message) || 'неизвестно',\n  time: new Date().toISOString()\n} }];"
+      },
+      "id": "e0000000-0000-0000-0000-000000000002",
+      "name": "Формат алерта",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e0000000-0000-0000-0000-000000000003",
+      "name": "Отправка алерта (Telegram-заглушка)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Формат алерта",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Формат алерта": {
+      "main": [
+        [
+          {
+            "node": "Отправка алерта (Telegram-заглушка)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
